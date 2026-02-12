@@ -1,0 +1,1165 @@
+<!DOCTYPE html>
+<html lang="pt-br">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Notepad++ Glass - Enhanced Editor</title>
+    <link href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@300;400;700&family=Ubuntu+Mono&display=swap" rel="stylesheet">
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+    <script src="https://cdnjs.cloudflare.com/ajax/libs/html2pdf.js/0.10.1/html2pdf.bundle.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/docx@8.5.0/build/index.js"></script>
+    <style>
+        :root {
+            --glass-bg: rgba(255, 255, 255, 0.1);
+            --glass-border: rgba(255, 255, 255, 0.2);
+            --accent-color: #00d4ff;
+            --text-color: #ffffff;
+            --current-bg: linear-gradient(to right, #19547b, #ffd89b);
+            --indent-guide: rgba(255, 255, 255, 0.12);
+            --line-height: 1.6;
+            --tab-size: 4;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+            font-family: 'Ubuntu', sans-serif;
+        }
+
+        body {
+            height: 100vh;
+            background: var(--current-bg);
+            background-attachment: fixed;
+            display: flex;
+            flex-direction: column;
+            color: var(--text-color);
+            overflow: hidden;
+            transition: background 0.5s ease;
+        }
+
+        .navbar {
+            display: flex;
+            padding: 10px 20px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(10px);
+            border-bottom: 1px solid var(--glass-border);
+            z-index: 100;
+        }
+
+        .menu-item {
+            position: relative;
+            margin-right: 20px;
+            cursor: pointer;
+            padding: 5px 10px;
+            border-radius: 5px;
+            transition: background 0.3s;
+        }
+
+        .menu-item:hover {
+            background: rgba(255, 255, 255, 0.1);
+        }
+
+        .dropdown {
+            position: absolute;
+            top: 100%;
+            left: 0;
+            background: rgba(20, 20, 40, 0.95);
+            backdrop-filter: blur(15px);
+            border: 1px solid var(--glass-border);
+            border-radius: 8px;
+            min-width: 220px;
+            display: none;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            margin-top: 5px;
+            z-index: 1000;
+        }
+
+        .menu-item:hover .dropdown {
+            display: block;
+        }
+
+        .dropdown-item {
+            padding: 12px 15px;
+            transition: background 0.2s;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            font-size: 14px;
+            cursor: pointer;
+        }
+
+        .dropdown-item:hover {
+            background: var(--accent-color);
+            color: #000;
+        }
+
+        .toolbar {
+            display: flex;
+            align-items: center;
+            padding: 10px 20px;
+            background: rgba(255, 255, 255, 0.05);
+            border-bottom: 1px solid var(--glass-border);
+            gap: 12px;
+            flex-wrap: wrap;
+        }
+
+        .btn {
+            background: var(--glass-bg);
+            border: 1px solid var(--glass-border);
+            color: white;
+            padding: 8px 15px;
+            border-radius: 6px;
+            cursor: pointer;
+            transition: all 0.3s;
+            font-size: 13px;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .btn:hover {
+            background: var(--accent-color);
+            color: #000;
+            transform: translateY(-1px);
+        }
+
+        .btn-primary {
+            background: rgba(0, 212, 255, 0.2);
+            border-color: var(--accent-color);
+        }
+
+        .editor-container {
+            flex: 1;
+            display: flex;
+            overflow: hidden;
+            margin: 15px;
+            background: var(--glass-bg);
+            backdrop-filter: blur(12px);
+            border: 1px solid var(--glass-border);
+            border-radius: 12px;
+            position: relative;
+        }
+
+        .line-numbers {
+            width: 55px;
+            padding: 20px 5px;
+            text-align: right;
+            background: rgba(0, 0, 0, 0.3);
+            color: rgba(255, 255, 255, 0.4);
+            font-family: 'Ubuntu', 'Ubuntu Mono', monospace;
+            font-size: 15px;
+            line-height: var(--line-height);
+            user-select: none;
+            border-right: 1px solid var(--glass-border);
+            overflow: hidden;
+        }
+
+        .editor-wrapper {
+            flex: 1;
+            position: relative;
+            overflow: hidden;
+        }
+
+        /* Backdrop para as guias de indentação */
+        #backdrop {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            padding: 20px;
+            font-family: 'Ubuntu', 'Ubuntu Mono', monospace;
+            font-size: 15px;
+            line-height: var(--line-height);
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            color: transparent;
+            pointer-events: none;
+            z-index: 1;
+            overflow: hidden;
+        }
+
+        #editor {
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            padding: 20px;
+            font-family: 'Ubuntu', 'Ubuntu Mono', monospace;
+            font-size: 15px;
+            line-height: var(--line-height);
+            color: #e0e0e0;
+            outline: none;
+            white-space: pre-wrap;
+            word-wrap: break-word;
+            z-index: 2;
+            overflow: auto;
+            background: transparent;
+            tab-size: var(--tab-size);
+            -moz-tab-size: var(--tab-size);
+        }
+
+        #editor img {
+            max-width: 80%;
+            border-radius: 8px;
+            margin: 10px 0;
+            border: 1px solid var(--glass-border);
+            box-shadow: 0 4px 15px rgba(0,0,0,0.3);
+            display: block;
+        }
+
+        /* Estilo das guias de indentação - Mais sutis */
+        .indent-guide {
+            display: inline-block;
+            border-left: 1px solid var(--indent-guide);
+            height: 1.6em;
+            vertical-align: bottom;
+            margin-left: -1px;
+            opacity: 0.6;
+        }
+
+        .modal-overlay {
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 100%;
+            background: rgba(0,0,0,0.7);
+            backdrop-filter: blur(5px);
+            display: none;
+            justify-content: center;
+            align-items: center;
+            z-index: 2000;
+        }
+
+        .modal {
+            background: rgba(30, 30, 50, 0.95);
+            border: 1px solid var(--glass-border);
+            border-radius: 15px;
+            padding: 25px;
+            width: 450px;
+            box-shadow: 0 20px 50px rgba(0,0,0,0.5);
+            max-height: 80vh;
+            overflow-y: auto;
+        }
+
+        .modal-title {
+            margin-bottom: 20px;
+            font-size: 18px;
+            border-bottom: 1px solid var(--glass-border);
+            padding-bottom: 10px;
+        }
+
+        .form-group {
+            margin-bottom: 15px;
+        }
+
+        .form-group label {
+            display: block;
+            margin-bottom: 8px;
+            font-size: 14px;
+        }
+
+        .form-control {
+            width: 100%;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid var(--glass-border);
+            color: white;
+            padding: 10px;
+            border-radius: 5px;
+            outline: none;
+        }
+
+        .form-control:focus {
+            border-color: var(--accent-color);
+            background: rgba(255,255,255,0.15);
+        }
+
+        .modal-actions {
+            display: flex;
+            justify-content: flex-end;
+            gap: 10px;
+            margin-top: 20px;
+        }
+
+        .status-bar {
+            padding: 6px 20px;
+            background: var(--glass-bg);
+            font-size: 12px;
+            display: flex;
+            justify-content: space-between;
+            border-top: 1px solid var(--glass-border);
+        }
+
+        .format-option {
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            margin-bottom: 10px;
+            padding: 10px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 5px;
+            cursor: pointer;
+            transition: background 0.2s;
+        }
+
+        .format-option:hover {
+            background: rgba(255,255,255,0.1);
+        }
+
+        .format-option input[type="radio"] {
+            cursor: pointer;
+        }
+
+        .format-option label {
+            cursor: pointer;
+            margin: 0;
+            flex: 1;
+        }
+
+        .checkbox-group {
+            margin-top: 10px;
+            padding: 10px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 5px;
+        }
+
+        .checkbox-item {
+            display: flex;
+            align-items: center;
+            gap: 8px;
+            margin-bottom: 8px;
+        }
+
+        .checkbox-item input[type="checkbox"] {
+            cursor: pointer;
+        }
+
+        .checkbox-item label {
+            cursor: pointer;
+            margin: 0;
+        }
+
+        /* Estilos para busca */
+        .search-panel {
+            position: fixed;
+            top: 80px;
+            right: 20px;
+            background: rgba(30, 30, 50, 0.95);
+            border: 1px solid var(--glass-border);
+            border-radius: 8px;
+            padding: 15px;
+            width: 300px;
+            box-shadow: 0 8px 32px rgba(0, 0, 0, 0.5);
+            z-index: 500;
+            display: none;
+        }
+
+        .search-panel.active {
+            display: block;
+        }
+
+        .search-panel-title {
+            font-size: 14px;
+            font-weight: bold;
+            margin-bottom: 10px;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .search-panel-close {
+            cursor: pointer;
+            font-size: 18px;
+            color: var(--accent-color);
+        }
+
+        .search-panel-close:hover {
+            color: white;
+        }
+
+        .search-input-group {
+            display: flex;
+            gap: 5px;
+            margin-bottom: 10px;
+        }
+
+        .search-input-group input {
+            flex: 1;
+            background: rgba(255,255,255,0.1);
+            border: 1px solid var(--glass-border);
+            color: white;
+            padding: 8px;
+            border-radius: 4px;
+            font-size: 12px;
+        }
+
+        .search-input-group button {
+            background: var(--accent-color);
+            border: none;
+            color: #000;
+            padding: 8px 12px;
+            border-radius: 4px;
+            cursor: pointer;
+            font-size: 12px;
+            font-weight: bold;
+        }
+
+        .search-input-group button:hover {
+            background: #00b8d4;
+        }
+
+        .search-results {
+            max-height: 250px;
+            overflow-y: auto;
+            font-size: 12px;
+        }
+
+        .search-result-item {
+            padding: 8px;
+            background: rgba(255,255,255,0.05);
+            border-left: 3px solid var(--accent-color);
+            margin-bottom: 5px;
+            cursor: pointer;
+            border-radius: 3px;
+            transition: background 0.2s;
+        }
+
+        .search-result-item:hover {
+            background: rgba(255,255,255,0.1);
+        }
+
+        .search-result-line {
+            font-weight: bold;
+            color: var(--accent-color);
+            font-size: 11px;
+        }
+
+        .search-result-text {
+            color: #b0b0b0;
+            margin-top: 3px;
+            word-break: break-word;
+        }
+
+        .search-no-results {
+            padding: 10px;
+            text-align: center;
+            color: rgba(255,255,255,0.5);
+            font-size: 12px;
+        }
+
+        .search-stats {
+            padding: 8px;
+            background: rgba(255,255,255,0.05);
+            border-radius: 4px;
+            font-size: 11px;
+            color: rgba(255,255,255,0.7);
+            margin-top: 10px;
+        }
+
+        /* Destaque de palavras no editor */
+        .highlight {
+            background-color: rgba(0, 212, 255, 0.3);
+            border-radius: 2px;
+        }
+    </style>
+</head>
+<body>
+
+    <div class="navbar">
+        <div class="menu-item">
+            Arquivo
+            <div class="dropdown">
+                <div class="dropdown-item" onclick="newFile()">Novo <span>Ctrl+N</span></div>
+                <div class="dropdown-item" onclick="document.getElementById('fileInput').click()">Importar...</div>
+                <div class="dropdown-item" onclick="openSaveModal()">Salvar Como... <span>Ctrl+S</span></div>
+                <div class="dropdown-item" onclick="window.print()">Imprimir</div>
+            </div>
+        </div>
+        <div class="menu-item">
+            Skins
+            <div class="dropdown" id="skinDropdown"></div>
+        </div>
+    </div>
+
+    <div class="toolbar">
+        <button class="btn btn-primary" onclick="document.getElementById('fileInput').click()">📂 Importar</button>
+        <button class="btn btn-primary" onclick="openSaveModal()">💾 Salvar</button>
+        <button class="btn" onclick="copyToClipboard()">📋 Copiar Tudo</button>
+        <div style="flex: 1;"></div>
+        <div class="search-container" style="display:flex; align-items:center; background:rgba(255,255,255,0.1); border-radius:20px; padding:5px 15px; border:1px solid var(--glass-border);">
+            <span>🔍</span>
+            <input type="text" id="searchInput" style="background:transparent; border:none; color:white; outline:none; margin-left:10px; width:120px;" placeholder="Pesquisar..." onkeyup="openSearchPanel()">
+        </div>
+        <select class="btn" id="skinSelect" onchange="changeSkin(this.value)" style="background:rgba(255,255,255,0.1);"></select>
+    </div>
+
+    <input type="file" id="fileInput" hidden accept=".txt,.html,.htm,.xlsx,.xls,.csv,.doc,.docx" onchange="importFile(event)">
+    <!-- Painel de Busca -->
+    <div class="search-panel" id="searchPanel">
+        <div class="search-panel-title">
+            <span>Buscar</span>
+            <span class="search-panel-close" onclick="closeSearchPanel()">X</span>
+        </div>
+        <div class="search-input-group">
+            <input type="text" id="searchPanelInput" placeholder="Digite a palavra..." onkeyup="performSearch()">
+            <button onclick="performSearch()">Buscar</button>
+        </div>
+        <div class="search-results" id="searchResults"></div>
+        <div class="search-stats" id="searchStats"></div>
+    </div>
+
+
+    <div class="editor-container">
+        <div class="line-numbers" id="lineNumbers">1</div>
+        <div class="editor-wrapper">
+            <div id="backdrop"></div>
+            <div id="editor" contenteditable="true" spellcheck="false" oninput="handleInput()" onscroll="syncScroll()"></div>
+        </div>
+    </div>
+
+    <div class="status-bar">
+        <div id="cursorPos">Modo Edição Multimídia</div>
+        <div id="currentSkinName">Skin: Golden Blue</div>
+        <div>UTF-8 | Enhanced Editor com Guias de Indentação</div>
+    </div>
+
+    <div class="modal-overlay" id="saveModal">
+        <div class="modal">
+            <div class="modal-title">Salvar Arquivo</div>
+            <div class="form-group">
+                <label>Nome do Arquivo</label>
+                <input type="text" id="saveFileName" class="form-control" value="meu_documento">
+            </div>
+            <div class="form-group">
+                <label>Formato</label>
+                <div id="formatOptions">
+                    <div class="format-option">
+                        <input type="radio" id="fmt-txt" name="saveFormat" value="txt" checked>
+                        <label for="fmt-txt">TXT - Texto Simples</label>
+                    </div>
+                    <div class="format-option">
+                        <input type="radio" id="fmt-doc" name="saveFormat" value="doc">
+                        <label for="fmt-doc">DOC - Word (com imagens)</label>
+                    </div>
+                    <div class="format-option">
+                        <input type="radio" id="fmt-pdf" name="saveFormat" value="pdf">
+                        <label for="fmt-pdf">PDF - Preserva cores e formatação</label>
+                    </div>
+                    <div class="format-option">
+                        <input type="radio" id="fmt-html" name="saveFormat" value="html">
+                        <label for="fmt-html">HTML - Página Web</label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="form-group">
+                <label>Opções de Exportação</label>
+                <div class="checkbox-group">
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="preserveColors" checked>
+                        <label for="preserveColors">Preservar cores e tema</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="preserveIndent" checked>
+                        <label for="preserveIndent">Preservar indentação</label>
+                    </div>
+                    <div class="checkbox-item">
+                        <input type="checkbox" id="includeLineNumbers" id="includeLineNumbers">
+                        <label for="includeLineNumbers">Incluir números de linha (PDF/DOC)</label>
+                    </div>
+                </div>
+            </div>
+
+            <div class="modal-actions">
+                <button class="btn" onclick="closeSaveModal()">Cancelar</button>
+                <button class="btn btn-primary" onclick="executeSave()">Confirmar Download</button>
+            </div>
+        </div>
+    </div>
+
+    <script>
+        const editor = document.getElementById('editor');
+        const backdrop = document.getElementById('backdrop');
+        const lineNumbers = document.getElementById('lineNumbers');
+        const skinSelect = document.getElementById('skinSelect');
+        const skinDropdown = document.getElementById('skinDropdown');
+
+        const skins = [
+            { name: "Golden Blue", value: "linear-gradient(to right, #19547b, #ffd89b)" },
+            { name: "Deep Ocean", value: "radial-gradient(circle 349px at 0.3% 48.6%, rgba(0,0,0,1) 0%, rgba(87,124,253,0.89) 100.7%)" },
+            { name: "Blue Sky", value: "linear-gradient(90.2deg, rgba(1,47,95,1) -0.4%, rgba(56,141,217,1) 106.1%)" },
+            { name: "Midnight Blue", value: "linear-gradient(110deg, rgba(75,108,183,1) 11.3%, rgba(24,40,72,1) 99.3%)" },
+            { name: "Forest Stream", value: "linear-gradient(90.8deg, rgba(27,53,68,1) 2.2%, rgba(110,180,135,1) 84%)" },
+            { name: "Crimson Night", value: "radial-gradient(circle farthest-corner at 9.8% 19.4%, rgba(223,75,75,1) 11.6%, rgba(20,12,12,1) 90.5%)" },
+            { name: "Soft Mint", value: "linear-gradient(90.5deg, rgba(112,181,176,1) 1.9%, rgba(220,244,241,1) 87.7%)" },
+            { name: "Dark Teal", value: "linear-gradient(111.1deg, rgba(69,150,164,1) 2.5%, rgba(17,20,34,1) 100.3%)" },
+            { name: "Abyssal Blue", value: "radial-gradient(circle farthest-corner at -24.7% -47.3%, rgba(6,130,165,1) 0%, rgba(34,48,86,1) 66.8%, rgba(15,23,42,1) 100.2%)" },
+            { name: "Neon Cyber", value: "linear-gradient(270.5deg, rgba(79,232,207,1) 2.5%, rgba(26,25,31,1) 105.9%)" },
+            { name: "Steel Gray", value: "linear-gradient(110.7deg, rgba(15,33,43,1) 1.2%, rgba(74,123,157,1) 88.2%)" }
+        ];
+
+        skins.forEach((skin, index) => {
+            const opt = document.createElement('option');
+            opt.value = index;
+            opt.textContent = skin.name;
+            skinSelect.appendChild(opt);
+            const item = document.createElement('div');
+            item.className = 'dropdown-item';
+            item.textContent = skin.name;
+            item.onclick = () => changeSkin(index);
+            skinDropdown.appendChild(item);
+        });
+
+        function changeSkin(index) {
+            const skin = skins[index];
+            document.documentElement.style.setProperty('--current-bg', skin.value);
+            document.getElementById('currentSkinName').textContent = `Skin: ${skin.name}`;
+            skinSelect.value = index;
+            const isLight = skin.name === "Soft Mint" || skin.name === "Golden Blue";
+            document.documentElement.style.setProperty('--text-color', isLight ? '#1a1a2e' : '#ffffff');
+            document.documentElement.style.setProperty('--indent-guide', isLight ? 'rgba(0,0,0,0.15)' : 'rgba(255,255,255,0.12)');
+            editor.style.color = isLight ? '#1a1a2e' : '#e0e0e0';
+            handleInput();
+        }
+
+        function handleInput() {
+            updateBackdrop();
+            updateLineNumbers();
+        }
+
+        function updateBackdrop() {
+            const text = editor.innerText;
+            const lines = text.split('\n');
+            const processedLines = lines.map(line => {
+                let indentMatch = line.match(/^((    )+)/);
+                if (indentMatch) {
+                    const indentCount = indentMatch[0].length / 4;
+                    let guides = '';
+                    for(let i=0; i<indentCount; i++) {
+                        guides += '<span class="indent-guide">    </span>';
+                    }
+                    return guides + line.substring(indentMatch[0].length);
+                }
+                return line;
+            });
+            
+            backdrop.innerHTML = processedLines.join('\n') + (text.endsWith('\n') ? '\n ' : '');
+            syncScroll();
+        }
+
+        function updateLineNumbers() {
+            const text = editor.innerText;
+            const lines = text.split('\n').length || 1;
+            let nums = '';
+            for(let i=1; i<=lines; i++) nums += i + '<br>';
+            lineNumbers.innerHTML = nums;
+        }
+
+        function syncScroll() {
+            backdrop.scrollTop = editor.scrollTop;
+            backdrop.scrollLeft = editor.scrollLeft;
+            lineNumbers.scrollTop = editor.scrollTop;
+        }
+
+        // Suporte a Colagem de Imagens
+        editor.addEventListener('paste', function(e) {
+            const items = (e.clipboardData || e.originalEvent.clipboardData).items;
+            for (let index in items) {
+                const item = items[index];
+                if (item.kind === 'file' && item.type.indexOf('image') !== -1) {
+                    e.preventDefault();
+                    const blob = item.getAsFile();
+                    const reader = new FileReader();
+                    reader.onload = function(event) {
+                        const img = document.createElement('img');
+                        img.src = event.target.result;
+                        
+                        const selection = window.getSelection();
+                        if (selection.rangeCount > 0) {
+                            const range = selection.getRangeAt(0);
+                            range.deleteContents();
+                            range.insertNode(img);
+                            range.setStartAfter(img);
+                            range.collapse(true);
+                            selection.removeAllRanges();
+                            selection.addRange(range);
+                        }
+                        handleInput();
+                    };
+                    reader.readAsDataURL(blob);
+                }
+            }
+        });
+
+        // Lógica de Indentação Automática e TAB
+        editor.addEventListener('keydown', function(e) {
+            if (e.key === 'Tab') {
+                e.preventDefault();
+                document.execCommand('insertHTML', false, '    ');
+                handleInput();
+            }
+            if (e.key === 'Enter') {
+                e.preventDefault();
+                const selection = window.getSelection();
+                const range = selection.getRangeAt(0);
+                
+                const container = range.startContainer;
+                const text = container.nodeType === 3 ? container.textContent : "";
+                const offset = range.startOffset;
+                const lineBeforeCursor = text.substring(0, offset);
+                
+                const indentMatch = lineBeforeCursor.match(/^(\s*)/);
+                const indentation = indentMatch ? indentMatch[0] : "";
+                
+                const br = document.createElement('br');
+                range.deleteContents();
+                range.insertNode(br);
+                range.setStartAfter(br);
+                range.collapse(true);
+                
+                if (indentation.length > 0) {
+                    const textNode = document.createTextNode(indentation);
+                    range.insertNode(textNode);
+                    range.setStartAfter(textNode);
+                    range.collapse(true);
+                }
+                
+                selection.removeAllRanges();
+                selection.addRange(range);
+                handleInput();
+            }
+        });
+
+        async function importFile(event) {
+            const file = event.target.files[0];
+            if (!file) return;
+            const ext = file.name.split('.').pop().toLowerCase();
+            if (ext === 'xlsx' || ext === 'xls') {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    const data = new Uint8Array(e.target.result);
+                    const workbook = XLSX.read(data, {type: 'array'});
+                    const firstSheet = workbook.Sheets[workbook.SheetNames[0]];
+                    const csv = XLSX.utils.sheet_to_csv(firstSheet, { FS: ";", RS: "\n" });
+                    editor.innerText = csv;
+                    handleInput();
+                };
+                reader.readAsArrayBuffer(file);
+            } else {
+                const reader = new FileReader();
+                reader.onload = (e) => {
+                    if (ext === 'html' || ext === 'htm') {
+                        editor.innerHTML = e.target.result;
+                    } else {
+                        editor.innerText = e.target.result;
+                    }
+                    handleInput();
+                };
+                reader.readAsText(file);
+            }
+            event.target.value = '';
+        }
+
+        function openSaveModal() {
+            document.getElementById('saveModal').style.display = 'flex';
+        }
+
+        function closeSaveModal() {
+            document.getElementById('saveModal').style.display = 'none';
+        }
+
+        // Função para extrair imagens do editor
+        function getEditorImages() {
+            const images = [];
+            const editorImages = editor.querySelectorAll('img');
+            editorImages.forEach((img, index) => {
+                images.push({
+                    src: img.src,
+                    alt: img.alt || `Imagem ${index + 1}`
+                });
+            });
+            return images;
+        }
+
+        // Exportar para DOC com imagens
+        async function exportToDoc(fileName, includeLineNumbers, preserveColors) {
+            const { Document, Packer, Paragraph, TextRun, Image, AlignmentType, BorderStyle, Table, TableCell, TableRow, VerticalAlign } = window.docx;
+            
+            const text = editor.innerText;
+            const images = getEditorImages();
+            let lines = text.split('\n');
+            
+            while (lines.length > 0 && lines[lines.length - 1].trim() === '') {
+                lines.pop();
+            }
+            
+            const paragraphs = [];
+            
+            lines.forEach((line, idx) => {
+                let lineContent = line;
+                if (includeLineNumbers && line.trim() !== '') {
+                    lineContent = `${idx + 1}. ${line}`;
+                }
+                
+                paragraphs.push(new Paragraph({
+                    text: lineContent || ' ',
+                    font: 'Ubuntu',
+                    size: 24,
+                    spacing: { line: 240, lineRule: 'auto' }
+                }));
+            });
+            
+            // Adicionar imagens preenchidas
+            for (const img of images) {
+                try {
+                    const response = await fetch(img.src);
+                    const blob = await response.blob();
+                    const arrayBuffer = await blob.arrayBuffer();
+                    
+                    paragraphs.push(new Paragraph({
+                        children: [
+                            new Image({
+                                data: arrayBuffer,
+                                transformation: {
+                                    width: 400,
+                                    height: 300
+                                }
+                            })
+                        ],
+                        spacing: { after: 200 }
+                    }));
+                } catch (err) {
+                    console.error('Erro ao processar imagem:', err);
+                }
+            }
+            
+            const doc = new Document({
+                sections: [{
+                    properties: {},
+                    children: paragraphs
+                }]
+            });
+            
+            Packer.toBlob(doc).then(blob => {
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${fileName}.docx`;
+                a.click();
+                URL.revokeObjectURL(url);
+            });
+        }
+
+        // Exportar para PDF com cores e formatação
+        function exportToPdf(fileName, includeLineNumbers, preserveColors) {
+            const element = document.createElement('div');
+            element.style.padding = '30px';
+            element.style.fontFamily = 'Ubuntu, sans-serif';
+            element.style.fontSize = '13px';
+            element.style.lineHeight = '1.8';
+            element.style.maxWidth = '800px';
+            element.style.margin = '0 auto';
+            
+            if (preserveColors) {
+                element.style.backgroundColor = '#1a1a2e';
+                element.style.color = '#e0e0e0';
+            } else {
+                element.style.backgroundColor = '#ffffff';
+                element.style.color = '#000000';
+            }
+            
+            const text = editor.innerText;
+            let lines = text.split('\n');
+            
+            while (lines.length > 0 && lines[lines.length - 1].trim() === '') {
+                lines.pop();
+            }
+            
+            let content = '<div style="font-family: Ubuntu, sans-serif; white-space: pre-wrap; word-wrap: break-word;">';
+            
+            lines.forEach((line, idx) => {
+                let lineContent = escapeHtml(line);
+                if (includeLineNumbers && line.trim() !== '') {
+                    const lineNum = String(idx + 1).padStart(4, ' ');
+                    const numColor = preserveColors ? '#666666' : '#999999';
+                    lineContent = '<span style="color: ' + numColor + '; margin-right: 15px;">' + lineNum + '</span>' + lineContent;
+                }
+                content += lineContent + '<br>';
+            });
+            
+            content += '</div>';
+            
+            const images = getEditorImages();
+            if (images.length > 0) {
+                content += '<div style="margin-top: 30px; page-break-before: always;">';
+                images.forEach((img) => {
+                    content += '<div style="margin: 30px 0; text-align: center;"><img src="' + img.src + '" style="max-width: 90%; height: auto; border-radius: 8px; box-shadow: 0 2px 8px rgba(0,0,0,0.2);"></div>';
+                });
+                content += '</div>';
+            }
+            
+            element.innerHTML = content;
+            
+            const opt = {
+                margin: 10,
+                filename: `${fileName}.pdf`,
+                image: { type: 'jpeg', quality: 0.98 },
+                html2canvas: { scale: 2 },
+                jsPDF: { orientation: 'portrait', unit: 'mm', format: 'a4' }
+            };
+            
+            html2pdf().set(opt).from(element).save();
+        }
+
+        function executeSave() {
+            const name = document.getElementById('saveFileName').value || 'documento';
+            const format = document.querySelector('input[name="saveFormat"]:checked').value;
+            const preserveColors = document.getElementById('preserveColors').checked;
+            const preserveIndent = document.getElementById('preserveIndent').checked;
+            const includeLineNumbers = document.getElementById('includeLineNumbers').checked;
+            
+            if (format === 'txt') {
+                const content = editor.innerText;
+                const blob = new Blob([content], { type: 'text/plain;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${name}.txt`;
+                a.click();
+                URL.revokeObjectURL(url);
+            } else if (format === 'doc') {
+                exportToDoc(name, includeLineNumbers, preserveColors);
+            } else if (format === 'pdf') {
+                exportToPdf(name, includeLineNumbers, preserveColors);
+            } else if (format === 'html') {
+                const content = editor.innerHTML;
+                const htmlContent = `<!DOCTYPE html>
+<html>
+<head>
+    <meta charset="UTF-8">
+    <title>${name}</title>
+    <link href="https://fonts.googleapis.com/css2?family=Ubuntu:wght@300;400;700&display=swap" rel="stylesheet">
+    <style>
+        body {
+            background: ${preserveColors ? '#1a1a2e' : '#ffffff'};
+            color: ${preserveColors ? '#e0e0e0' : '#000000'};
+            font-family: 'Ubuntu', sans-serif;
+            padding: 20px;
+            line-height: 1.6;
+        }
+        img { max-width: 100%; height: auto; border-radius: 8px; margin: 10px 0; }
+        pre { white-space: pre-wrap; word-wrap: break-word; font-family: 'Ubuntu', monospace; }
+    </style>
+</head>
+<body>
+${content}
+</body>
+</html>`;
+                const blob = new Blob([htmlContent], { type: 'text/html;charset=utf-8' });
+                const url = URL.createObjectURL(blob);
+                const a = document.createElement('a');
+                a.href = url;
+                a.download = `${name}.html`;
+                a.click();
+                URL.revokeObjectURL(url);
+            }
+            
+            closeSaveModal();
+        }
+
+        window.addEventListener('keydown', (e) => {
+            if (e.ctrlKey && e.key === 's') {
+                e.preventDefault();
+                openSaveModal();
+            }
+            if (e.ctrlKey && e.key === 'n') {
+                e.preventDefault();
+                newFile();
+            }
+        });
+
+        async function copyToClipboard() {
+            const range = document.createRange();
+            range.selectNode(editor);
+            window.getSelection().removeAllRanges();
+            window.getSelection().addRange(range);
+            document.execCommand('copy');
+            window.getSelection().removeAllRanges();
+            alert('Conteúdo copiado para a área de transferência!');
+        }
+
+        function newFile() {
+            if(confirm('Deseja criar um novo arquivo? O conteúdo atual será perdido.')) {
+                editor.innerHTML = '';
+                handleInput();
+            }
+        }
+
+        // Funções de Busca
+        let searchMatches = [];
+        let currentMatchIndex = 0;
+
+        function openSearchPanel() {
+            const searchInput = document.getElementById('searchInput').value;
+            if (searchInput.trim().length > 0) {
+                document.getElementById('searchPanel').classList.add('active');
+                document.getElementById('searchPanelInput').value = searchInput;
+                performSearch();
+            }
+        }
+
+        function closeSearchPanel() {
+            document.getElementById('searchPanel').classList.remove('active');
+            clearHighlights();
+        }
+
+        function performSearch() {
+            const searchTerm = document.getElementById('searchPanelInput').value.trim();
+            const resultsContainer = document.getElementById('searchResults');
+            const statsContainer = document.getElementById('searchStats');
+            
+            resultsContainer.innerHTML = '';
+            searchMatches = [];
+            
+            if (searchTerm.length === 0) {
+                statsContainer.innerHTML = '';
+                clearHighlights();
+                return;
+            }
+            
+            const text = editor.innerText;
+            const lines = text.split('\n');
+            const regex = new RegExp(searchTerm, 'gi');
+            let totalMatches = 0;
+            
+            lines.forEach((line, lineIndex) => {
+                let match;
+                const lineMatches = [];
+                regex.lastIndex = 0;
+                
+                while ((match = regex.exec(line)) !== null) {
+                    lineMatches.push({
+                        lineNumber: lineIndex + 1,
+                        lineText: line,
+                        matchIndex: match.index,
+                        matchText: match[0]
+                    });
+                    totalMatches++;
+                }
+                
+                if (lineMatches.length > 0) {
+                    lineMatches.forEach((matchInfo) => {
+                        const resultItem = document.createElement('div');
+                        resultItem.className = 'search-result-item';
+                        const preview = matchInfo.lineText.substring(0, 50);
+                        resultItem.innerHTML = `
+                            <div class="search-result-line">Linha ${matchInfo.lineNumber}</div>
+                            <div class="search-result-text">${escapeHtml(preview)}${matchInfo.lineText.length > 50 ? '...' : ''}</div>
+                        `;
+                        resultItem.onclick = () => goToMatch(matchInfo.lineNumber, matchInfo.matchIndex, searchTerm);
+                        resultsContainer.appendChild(resultItem);
+                        searchMatches.push(matchInfo);
+                    });
+                }
+            });
+            
+            if (totalMatches === 0) {
+                resultsContainer.innerHTML = '<div class="search-no-results">Nenhum resultado encontrado</div>';
+                statsContainer.innerHTML = '';
+            } else {
+                statsContainer.innerHTML = `<strong>${totalMatches}</strong> ocorrência${totalMatches > 1 ? 's' : ''} encontrada${totalMatches > 1 ? 's' : ''}`;
+                highlightMatches(searchTerm);
+            }
+        }
+
+        function goToMatch(lineNumber, matchIndex, searchTerm) {
+            const text = editor.innerText;
+            const lines = text.split('\n');
+            
+            let charIndex = 0;
+            for (let i = 0; i < lineNumber - 1; i++) {
+                charIndex += lines[i].length + 1;
+            }
+            charIndex += matchIndex;
+            
+            const lineHeight = 24;
+            editor.scrollTop = (lineNumber - 1) * lineHeight - 100;
+            
+            const range = document.createRange();
+            const sel = window.getSelection();
+            
+            try {
+                const walker = document.createTreeWalker(
+                    editor,
+                    NodeFilter.SHOW_TEXT,
+                    null,
+                    false
+                );
+                
+                let charCount = 0;
+                let node;
+                while (node = walker.nextNode()) {
+                    const nextCharCount = charCount + node.length;
+                    if (nextCharCount > charIndex) {
+                        const start = charIndex - charCount;
+                        range.setStart(node, start);
+                        range.setEnd(node, start + searchTerm.length);
+                        sel.removeAllRanges();
+                        sel.addRange(range);
+                        break;
+                    }
+                    charCount = nextCharCount;
+                }
+            } catch (e) {
+                console.error('Erro ao selecionar texto:', e);
+            }
+        }
+
+        function highlightMatches(searchTerm) {
+            clearHighlights();
+            const text = editor.innerText;
+            const regex = new RegExp(`(${searchTerm})`, 'gi');
+            const highlighted = text.replace(regex, '<mark style="background-color: rgba(0, 212, 255, 0.4); border-radius: 2px;">$1</mark>');
+            
+            const images = editor.querySelectorAll('img');
+            const imageData = images.map(img => ({
+                src: img.src,
+                alt: img.alt
+            }));
+            
+            editor.innerHTML = highlighted;
+            
+            imageData.forEach(imgData => {
+                const img = document.createElement('img');
+                img.src = imgData.src;
+                img.alt = imgData.alt;
+                editor.appendChild(img);
+            });
+        }
+
+        function clearHighlights() {
+            const marks = editor.querySelectorAll('mark');
+            marks.forEach(mark => {
+                const parent = mark.parentNode;
+                while (mark.firstChild) {
+                    parent.insertBefore(mark.firstChild, mark);
+                }
+                parent.removeChild(mark);
+            });
+        }
+
+        function escapeHtml(text) {
+            const div = document.createElement('div');
+            div.textContent = text;
+            return div.innerHTML;
+        }
+
+        // Inicialização
+        editor.innerHTML = '';
+        handleInput();
+    </script>
+</body>
+</html>
